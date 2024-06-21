@@ -312,6 +312,7 @@ bundle-clean: ## Clean generated bundle files
 
 .PHONY: bin-clean
 bin-clean: ## Clean downloaded binaries
+	@[ -d bin ] && chmod -R u+rwx bin || true
 	$(RM) -r bin
 
 .PHONY: clean
