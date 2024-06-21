@@ -272,17 +272,25 @@ BUNDLE_IMGS ?= $(BUNDLE_IMG)
 # The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
 
-# Set CATALOG_BASE_IMG to an existing catalog image tag to add $BUNDLE_IMGS to that image.
-ifneq ($(origin CATALOG_BASE_IMG), undefined)
-FROM_INDEX_OPT := --from-index $(CATALOG_BASE_IMG)
-endif
-
-# Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
-# This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
+# Build a file based catalog image using opm.
+# https://docs.openshift.com/container-platform/4.12/operators/admin/olm-managing-custom-catalogs.html
 # https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
 .PHONY: catalog-build
-catalog-build: opm ## Build a catalog image.
-	$(OPM) index add --container-tool docker --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT)
+catalog-build: opm
+	@[ ! -d catalog ] && mkdir -p catalog || true
+	@[ ! -f catalog.Dockerfile ] && $(OPM) generate dockerfile catalog || true
+	$(OPM) init  sandboxed-containers-operator --default-channel=$(DEFAULT_CHANNEL) --description ./README.md --output yaml > catalog/index.yaml
+	$(OPM) render $(BUNDLE_IMG) --output=yaml >> catalog/index.yaml
+	@printf -- "---\n\
+	schema: olm.channel\n\
+	package: sandboxed-containers-operator\n\
+	name: stable\n\
+	entries:\n\
+	  - name: sandboxed-containers-operator.v$(VERSION)\n\
+	" >> "catalog/index.yaml"
+	$(OPM) validate catalog
+	docker build . -f catalog.Dockerfile -t $(CATALOG_IMG)
+
 
 # Push the catalog image.
 .PHONY: catalog-push
@@ -315,5 +323,10 @@ bin-clean: ## Clean downloaded binaries
 	@[ -d bin ] && chmod -R u+rwx bin || true
 	$(RM) -r bin
 
+.PHONY: catalog-clean
+catalog-clean: ## Clean catalog files
+	$(RM) -r catalog
+	$(RM) catalog.Dockerfile
+
 .PHONY: clean
-clean: manifests-clean generate-clean test-clean bundle-clean bin-clean ## Clean all generated files
+clean: manifests-clean generate-clean test-clean bundle-clean catalog-clean bin-clean ## Clean all generated files
