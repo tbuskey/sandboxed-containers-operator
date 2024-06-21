@@ -63,6 +63,8 @@ endif
 # These images needs to be synced with the default values in the Dockerfile.
 BUILDER_IMAGE ?= registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-openshift-4.16
 TARGET_IMAGE  ?= registry.ci.openshift.org/ocp/4.16:base
+# Set if token was obtained
+IMAGE_AUTH ?=
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # This is a requirement for 'setup-envtest.sh' in the test target.
@@ -143,7 +145,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
 	docker build \
-		-t ${IMG} \
+		-t ${IMG} $(IMAGE_AUTH) \
 		--build-arg BUILDER_IMAGE=$(BUILDER_IMAGE) \
 		--build-arg TARGET_IMAGE=$(TARGET_IMAGE) \
 		.
