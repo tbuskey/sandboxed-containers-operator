@@ -19,13 +19,12 @@ Our builder and base images are curated images from OpenShift.
 They are pulled from registry.ci.openshift.org, which require an authentication.
 To get access to these images, you have to login and retrieve a token, following [these steps](https://docs.ci.openshift.org/docs/how-tos/use-registries-in-build-farm/#how-do-i-log-in-to-pull-images-that-require-authentication)
 
-In summary:
-- login to one of the clusters' console
-- use the console's shortcut to get the commandline login command
-- log in from the command line with the provided command
-- use "oc registry login" to save the token locally
-
-### Using public images
+#### Using the token
+Set the authfile used by docker-build if login was successful.  docker build will not automatically look Ex:
+```
+export IMAGE_AUTH='--authfile=~/.docker/config.json'
+```
+#### Using public images instead of token
 
 If you cannot login to registry.ci.openshift.org, a temporary solution is to use
 public images during build and test. At the time of writing, the following public images
@@ -36,6 +35,14 @@ export BUILDER_IMAGE=registry.ci.openshift.org/openshift/release:golang-1.21
 export TARGET_IMAGE=registry.ci.openshift.org/origin/4.16:base
 make docker-build
 ```
+
+In summary:
+- login to one of the clusters' console
+- use the console's shortcut to get the commandline login command
+- log in from the command line with the provided command
+- use "oc registry login" to save the token locally
+- set IMAGE_AUTH so docker-build uses the token
+-- if you cannot login, use the public images
 
 ## Set Environment Variables
 
@@ -49,9 +56,19 @@ export IMAGE_TAG_BASE=quay.io/${QUAY_USERID}/openshift-sandboxed-containers-oper
 export IMG=quay.io/${QUAY_USERID}/openshift-sandboxed-containers-operator
 ```
 
+## If developing for openshift, change SANDBOXED_CONTAINERS_EXTENSION
+```
+sed -ie 's/kata-containers/sandboxed-containers/' config/manager/manager.yaml
+```
+
 ## Viewing available Make targets
 ```
 make help
+```
+## Skipping tests in Make
+Add SKIP_TESTS=1 when calling make.  ex:
+```
+make SKIP_TESTS=1 ...
 ```
 
 ## Building Operator image
@@ -73,7 +90,6 @@ make bundle-build
 make bundle-push
 ```
 
-
 ## Building Catalog image
 ```
 make catalog-build
@@ -85,7 +101,7 @@ make catalog-push
 ### Create Custom Operator Catalog
 
 Create a new `CatalogSource` yaml. Replace `user` with your quay.io user and
-`version` with the operator version.
+`version` with the operator VERSION from the Makefile
 
 ```
 cat > my_catalog.yaml <<EOF
@@ -97,7 +113,7 @@ metadata:
 spec:
  displayName: My Operator Catalog
  sourceType: grpc
- image:  quay.io/${QUAY_USERID}/openshift-sandboxed-containers-operator-catalog:version
+ image:  quay.io/${QUAY_USERID}/openshift-sandboxed-containers-operator-catalog:v${VERSION}
  updateStrategy:
    registryPoll:
       interval: 5m
@@ -106,10 +122,10 @@ EOF
 ```
 Deploy the catalog
 ```
-oc create -f my_catalog.yaml
+oc apply -f my_catalog.yaml
 ```
 
-The new operator should be now available for installation from the OpenShift web console
+The new operator should become available for installation from the OpenShift web console
 
 
 ## Installing the Operator using CLI
