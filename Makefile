@@ -265,18 +265,13 @@ OPM = $(shell which opm)
 endif
 endif
 
-# A comma-separated list of bundle images (e.g. make catalog-build BUNDLE_IMGS=example.com/operator-bundle:v0.1.0,example.com/operator-bundle:v0.2.0).
-# These images MUST exist in a registry and be pull-able.
-BUNDLE_IMGS ?= $(BUNDLE_IMG)
-
 # The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
 
-# Build a file based catalog image using opm.
-# https://docs.openshift.com/container-platform/4.12/operators/admin/olm-managing-custom-catalogs.html
-# https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
-.PHONY: catalog-build
-catalog-build: opm
+# Generate/overwrite catalog/index.yaml and catalog.Dockerfile
+# needed IFF IMAGE_TAG_BASE was modified or set in shell
+.PHONY: catalog-init
+catalog-init: opm
 	@[ ! -d catalog ] && mkdir -p catalog || true
 	@[ ! -f catalog.Dockerfile ] && $(OPM) generate dockerfile catalog || true
 	$(OPM) init  sandboxed-containers-operator --default-channel=$(DEFAULT_CHANNEL) --description ./README.md --output yaml > catalog/index.yaml
@@ -288,13 +283,18 @@ catalog-build: opm
 	entries:\n\
 	  - name: sandboxed-containers-operator.v$(VERSION)\n\
 	" >> "catalog/index.yaml"
+
+# Validate & build a file based catalog image using opm.
+# https://docs.openshift.com/container-platform/4.12/operators/admin/olm-managing-custom-catalogs.html
+# https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
+# if IMAGE_TAG_BASE was modified or set in shell, run make catalog-init
+.PHONY: catalog-build
+catalog-build: opm
 	$(OPM) validate catalog
 	docker build . -f catalog.Dockerfile -t $(CATALOG_IMG)
 
-
-# Push the catalog image.
 .PHONY: catalog-push
-catalog-push: ## Push a catalog image.
+catalog-push:
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
 
 ##@ Cleanup
@@ -324,9 +324,9 @@ bin-clean: ## Clean downloaded binaries
 	$(RM) -r bin
 
 .PHONY: catalog-clean
-catalog-clean: ## Clean catalog files
+catalog-clean: ## Clean catalog files (you will need to run catalog-init)
 	$(RM) -r catalog
 	$(RM) catalog.Dockerfile
 
 .PHONY: clean
-clean: manifests-clean generate-clean test-clean bundle-clean catalog-clean bin-clean ## Clean all generated files
+clean: manifests-clean generate-clean test-clean bundle-clean bin-clean ## Clean all generated files

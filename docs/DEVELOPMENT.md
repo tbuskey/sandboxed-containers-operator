@@ -3,7 +3,7 @@
 ## Prerequisites
 - Golang - 1.21.x
 - Operator SDK version - 1.28.0
-```
+```shell
 export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
 export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.28.0
@@ -20,8 +20,8 @@ They are pulled from registry.ci.openshift.org, which require an authentication.
 To get access to these images, you have to login and retrieve a token, following [these steps](https://docs.ci.openshift.org/docs/how-tos/use-registries-in-build-farm/#how-do-i-log-in-to-pull-images-that-require-authentication)
 
 #### Using the token
-Set the authfile used by docker-build if login was successful.  docker build will not automatically look Ex:
-```
+If docker build does not automatically use the token in your authfile, it can be forced:
+```shell
 export IMAGE_AUTH='--authfile=~/.docker/config.json'
 ```
 #### Using public images instead of token
@@ -41,49 +41,46 @@ In summary:
 - use the console's shortcut to get the commandline login command
 - log in from the command line with the provided command
 - use "oc registry login" to save the token locally
-- set IMAGE_AUTH so docker-build uses the token
+- set IMAGE_AUTH to force docker-build to use the token if needed
 -- if you cannot login, use the public images
 
-## Set Environment Variables
+## Change catalog for private quay repo
+### Set Environment Variables
 
 Set your quay.io userid
-```
+```shell
 export QUAY_USERID=<user>
-```
-
-```
 export IMAGE_TAG_BASE=quay.io/${QUAY_USERID}/openshift-sandboxed-containers-operator
 export IMG=quay.io/${QUAY_USERID}/openshift-sandboxed-containers-operator
 ```
 
-## If developing for openshift, change SANDBOXED_CONTAINERS_EXTENSION
-```
-sed -ie 's/kata-containers/sandboxed-containers/' config/manager/manager.yaml
-```
+### Overwrite catalog/index.yaml
+If `IMAGE_TAG_BASE` was set, use `make catalog-init` to change `catalog/index.yaml` for your quay repo.  It will also overwrite `catalog.Dockerfile`
 
 ## Viewing available Make targets
 ```
 make help
 ```
-## Skipping tests in Make
-Add SKIP_TESTS=1 when calling make.  ex:
-```
-make SKIP_TESTS=1 ...
-```
-
 ## Building Operator image
 ```
 make docker-build
 make docker-push
 ```
+### Skipping tests in Make
+Add SKIP_TESTS=1 when calling make.  ex:
+```
+make SKIP_TESTS=1 docker-build
+```
 
 ## Building Operator bundle image
 
-If you are deploying in an OpenShift cluster then modify the
-value of the env variable `SANDBOXED_CONTAINERS_EXTENSION` to `sandboxed-containers`
-in the file `config/manager/manager.yaml` before running the below mentioned
-commands.
+### If you are deploying in an OpenShift cluster
+Modify SANDBOXED_CONTAINERS_EXTENSION in config/manager/manager.yaml before you __Make the bundle__
+```shell
+sed -ie 's/kata-containers/sandboxed-containers/' config/manager/manager.yaml
+```
 
+### Make the bundle
 ```
 make bundle CHANNELS=candidate
 make bundle-build
@@ -96,14 +93,14 @@ make catalog-build
 make catalog-push
 ```
 
-## Installing the Operator using OpenShift Web console 
+## Installing the Operator using OpenShift Web console
 
 ### Create Custom Operator Catalog
 
-Create a new `CatalogSource` yaml. Replace `user` with your quay.io user and
-`version` with the operator VERSION from the Makefile
+Create a new `CatalogSource` yaml. Replace `${QUAY_USERID}` with your quay.io user and
+`${VERSION}` with the operator VERSION from the Makefile
 
-```
+```shell
 cat > my_catalog.yaml <<EOF
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
@@ -131,10 +128,10 @@ The new operator should become available for installation from the OpenShift web
 ## Installing the Operator using CLI
 
 When deploying the Operator using CLI, cert-manager needs to be installed otherwise
-webhook will not start. `cert-manager` is not required when deploying via the web console as OLM 
+webhook will not start. `cert-manager` is not required when deploying via the web console as OLM
 takes care of webhook certificate management. You can read more on this [here]( https://olm.operatorframework.io/docs/advanced-tasks/adding-admission-and-conversion-webhooks/#deploying-an-operator-with-webhooks-using-olm)
 
-### Install cert-manager 
+### Install cert-manager
 ```
  oc apply -f https://github.com/jetstack/cert-manager/releases/download/v1.5.3/cert-manager.yaml
 ```
