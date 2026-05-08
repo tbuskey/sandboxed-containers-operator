@@ -72,12 +72,21 @@ Evaluates a single ticket for the Why, Results, Prove, Design, Evidence framewor
 # As a Claude Code skill
 "Check if OSC-1234 has all required information"
 
-# Direct command line
+# Direct command line - text output (default)
 python3 scripts/jira-coach/validate.py OSC-1234
-python3 scripts/jira-coach/validate.py https://issues.redhat.com/browse/OSC-1234
 
-# JSON output
-python3 scripts/jira-coach/validate.py OSC-1234 --json
+# JSON output (complete data)
+python3 scripts/jira-coach/validate.py OSC-1234 --format json
+
+# CSV output (for spreadsheets)
+python3 scripts/jira-coach/validate.py OSC-1234 --format csv
+
+# CSV without header (for batch processing)
+python3 scripts/jira-coach/validate.py OSC-1234 --format csv --no-header
+
+# Save to file
+python3 scripts/jira-coach/validate.py OSC-1234 --format json --output validation.json
+python3 scripts/jira-coach/validate.py OSC-1234 --format csv --output validation.csv
 ```
 
 **Output:**
@@ -387,14 +396,132 @@ Stories without PR/MR: 2
 Total unique PR/MR URLs: 4
 ```
 
+## Output Formats
+
+### Text Format (Default)
+Human-readable output with scoring summary, detailed validation, and coaching. See example above.
+
+### JSON Format
+Complete data structure with all validation results and timestamps. Primary format for programmatic access.
+
+```bash
+python3 scripts/jira-coach/validate.py OSC-1234 --format json
+```
+
+Includes:
+- All pillar scores and evidence
+- Timestamps (created, updated, validated in UTC)
+- Complete recommendations
+- Full ticket metadata
+
+### CSV Format
+Spreadsheet-compatible format for tracking multiple tickets over time.
+
+```bash
+python3 scripts/jira-coach/validate.py OSC-1234 --format csv
+```
+
+**CSV Columns:**
+- `ticket_key` - Jira ticket ID
+- `ticket_type` - Epic, Feature, Story, etc.
+- `summary` - Ticket title
+- `status` - Current Jira status
+- `url` - Direct link to ticket
+- `created_at_utc` - When ticket was created (ISO 8601)
+- `updated_at_utc` - Last update timestamp (ISO 8601)
+- `validated_at_utc` - When validation ran (ISO 8601)
+- `why_score` - Why pillar score (0-3)
+- `results_score` - Results pillar score (0-3)
+- `prove_score` - Prove pillar score (0-3)
+- `design_score` - Design pillar score (0-3)
+- `evidence_score` - Evidence pillar score (0-3)
+- `total_points` - Sum of all pillar scores
+- `max_points` - Maximum possible (15)
+- `overall_percentage` - Overall score percentage
+- `is_complete` - True if ≥75% and no zeros
+- `missing_aspects` - Comma-separated list of missing pillars
+
+**Use Cases:**
+- Track ticket quality over time
+- Sprint/release quality reports
+- Identify patterns in incomplete tickets
+- Compare ticket completeness across teams
+
+**Example: Build Quality Dashboard**
+```bash
+# METHOD 1: Using --no-header (recommended)
+tickets=($(jira list --sprint current --format=ids))
+python3 scripts/jira-coach/validate.py "${tickets[0]}" --format csv > sprint-quality.csv
+for ticket in "${tickets[@]:1}"; do
+    python3 scripts/jira-coach/validate.py "$ticket" --format csv --no-header >> sprint-quality.csv
+done
+
+# METHOD 2: Using helper script (easiest)
+./scripts/jira-coach/batch-validate.sh sprint-quality.csv $(jira list --sprint current --format=ids)
+
+# METHOD 3: Save individual files then combine (slower)
+for ticket in $(jira list --sprint current --format=ids); do
+    python3 scripts/jira-coach/validate.py "$ticket" --format csv --output "validation-${ticket}.csv"
+done
+head -1 validation-*.csv | head -1 > sprint-quality.csv  # Header
+tail -n +2 -q validation-*.csv >> sprint-quality.csv     # All data rows
+rm validation-*.csv  # Cleanup
+
+# Import sprint-quality.csv into spreadsheet for analysis
+```
+
 ## Advanced Usage
+
+### Quick Batch Validation (Using Helper Script)
+
+For convenience, use the `batch-validate.sh` script:
+
+```bash
+# Validate multiple tickets
+./scripts/jira-coach/batch-validate.sh sprint-report.csv OSC-1234 OSC-1235 OSC-1236
+
+# Validate from Jira query
+./scripts/jira-coach/batch-validate.sh release-report.csv $(jira list --fixVersion 1.13 --format=ids)
+
+# Validate from file
+./scripts/jira-coach/batch-validate.sh batch-report.csv $(cat tickets.txt)
+```
+
+The script provides:
+- Progress indicator for each ticket
+- Error handling (continues on failures)
+- Summary statistics (success/fail counts, average score)
+- Single CSV output with proper header
 
 ### Batch Validation
 
 ```bash
-# Validate multiple tickets
+# Validate multiple tickets (text output)
 for ticket in OSC-1234 OSC-1235 OSC-1236; do
     python3 scripts/jira-coach/validate.py "$ticket"
+done
+
+# Generate CSV report for multiple tickets (METHOD 1: using --no-header)
+# First ticket includes header, rest omit it
+tickets=(OSC-1234 OSC-1235 OSC-1236)
+python3 scripts/jira-coach/validate.py "${tickets[0]}" --format csv > batch-report.csv
+for ticket in "${tickets[@]:1}"; do
+    python3 scripts/jira-coach/validate.py "$ticket" --format csv --no-header >> batch-report.csv
+done
+
+# Generate CSV report (METHOD 2: simpler one-liner)
+{
+    python3 scripts/jira-coach/validate.py OSC-1234 --format csv
+    for ticket in OSC-1235 OSC-1236; do
+        python3 scripts/jira-coach/validate.py "$ticket" --format csv --no-header
+    done
+} > batch-report.csv
+
+# Generate CSV report (METHOD 3: with ticket list from file)
+tickets=($(cat ticket-list.txt))
+python3 scripts/jira-coach/validate.py "${tickets[0]}" --format csv > batch-report.csv
+for ticket in "${tickets[@]:1}"; do
+    python3 scripts/jira-coach/validate.py "$ticket" --format csv --no-header >> batch-report.csv
 done
 ```
 
@@ -447,6 +574,22 @@ python3 scripts/jira-coach/assemble.py OSC-1234 --json | \
 # Find stories without PRs
 python3 scripts/jira-coach/assemble.py OSC-1234 --json | \
   jq -r '.stories[] | select(.has_pr_mr == false) | .key'
+
+# Get timestamps from JSON
+python3 scripts/jira-coach/validate.py OSC-1234 --format json | \
+  jq '.timestamps'
+
+# CSV querying (using awk/cut)
+# Get just the scores
+python3 scripts/jira-coach/validate.py OSC-1234 --format csv | \
+  awk -F',' 'NR==1 {for(i=1;i<=NF;i++) if($i~/score/) printf "%s%s", (p?" ":""), $i; p=1; print ""} NR>1 {print $9,$10,$11,$12,$13}'
+
+# Get overall percentage from CSV
+python3 scripts/jira-coach/validate.py OSC-1234 --format csv | \
+  tail -1 | cut -d',' -f16
+
+# Find tickets below threshold (from batch CSV)
+awk -F',' 'NR>1 && $16<75 {print $1, $16"%"}' batch-report.csv
 ```
 
 ## Troubleshooting
@@ -480,12 +623,19 @@ GitHub/GitLab APIs have rate limits for unauthenticated requests:
 
 ## Files in This Directory
 
+**Scripts:**
 - **validate.py** - Ticket validation tool (Why, Results, Prove, Design, Evidence)
 - **assemble.py** - Feature assembly tool (gather stories and PRs)
 - **verify_prs.py** - PR/MR verification helper
+- **batch-validate.sh** - Helper script for batch validation with progress tracking
 - **example.sh** - Interactive examples and demos
+
+**Documentation:**
 - **README.md** - This file (main documentation)
 - **README-validate.md** - Detailed validation documentation
+- **FRAMEWORK.md** - Complete framework guide (Why, Results, Prove, Design, Evidence)
+- **SCORING.md** - Scoring system explanation and usage
+- **CSV-FORMAT.md** - CSV format specification and usage examples
 
 ## Best Practices
 

@@ -74,7 +74,7 @@ This document explains the five-pillar framework for complete Jira tickets.
 - "How-to" instructions
 - Anything that is not in GA docs.
   - some things are not well known to everyone
-- Links to internal docs that are known to be working
+- Links to internal docs that are proven to be working
 
 **Examples:**
 ```markdown
@@ -273,7 +273,6 @@ Always include both:
 For testing evidence:
 - Link to CI results
 - Paste test output
-- Reference QE verification
 - Include screenshots if helpful
 
 ---
@@ -355,7 +354,7 @@ PILLAR SCORES:
 ## Common Questions
 
 **Q: Can Prove and Results overlap?**
-A: They should complement, not repeat. Results describes WHAT you see. Prove shows HOW to get there.
+A: They should complement, not repeat. Results describes WHAT you see. Prove shows steps to get there.
 
 **Q: Where do acceptance criteria go?**
 A: Split them:
@@ -375,7 +374,7 @@ A: All aspects still apply:
 A: Yes, but level of detail varies:
 - Feature/Epic: All five well-documented
 - Story: Can be briefer, reference parent for Why
-- Task: May have minimal Design if trivial
+- Spikes: not covered at present
 
 **Q: What if I don't know the Design yet?**
 A: That's OK for new tickets! Start with Why and Results. Add Prove and Design as you plan. Add Evidence as you implement.

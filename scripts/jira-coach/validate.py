@@ -11,10 +11,12 @@ Validates that Jira Feature/Epic tickets contain the necessary information:
 """
 
 import argparse
+import csv
 import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass, asdict
 
@@ -52,6 +54,9 @@ class TicketValidation:
     is_complete: bool
     missing_aspects: List[str]
     recommendations: List[str]
+    created_at: str  # ISO 8601 timestamp from Jira
+    updated_at: str  # ISO 8601 timestamp from Jira
+    validated_at: str  # ISO 8601 timestamp when validation ran
 
 
 class JiraValidator:
@@ -555,6 +560,11 @@ class JiraValidator:
         for result in [why_result, results_result, prove_result, design_result, evidence_result]:
             recommendations.extend(result.suggestions)
 
+        # Extract timestamps from Jira (already in ISO 8601 format)
+        created_at = fields.get('created', 'Unknown')
+        updated_at = fields.get('updated', 'Unknown')
+        validated_at = datetime.now(timezone.utc).isoformat()
+
         return TicketValidation(
             ticket_key=ticket_key,
             ticket_type=fields.get('issuetype', {}).get('name', 'Unknown'),
@@ -569,7 +579,10 @@ class JiraValidator:
             overall_score=overall_score,
             is_complete=is_complete,
             missing_aspects=missing,
-            recommendations=recommendations
+            recommendations=recommendations,
+            created_at=created_at,
+            updated_at=updated_at,
+            validated_at=validated_at
         )
 
     def format_validation(self, validation: TicketValidation) -> str:
@@ -729,6 +742,61 @@ class JiraValidator:
 
         return "\n".join(output)
 
+    def format_csv(self, validation: TicketValidation, include_header: bool = True) -> str:
+        """Format validation results as CSV."""
+        # CSV header and row
+        output = []
+
+        # Header
+        if include_header:
+            header = [
+                'ticket_key',
+                'ticket_type',
+                'summary',
+                'status',
+                'url',
+                'created_at_utc',
+                'updated_at_utc',
+                'validated_at_utc',
+                'why_score',
+                'results_score',
+                'prove_score',
+                'design_score',
+                'evidence_score',
+                'total_points',
+                'max_points',
+                'overall_percentage',
+                'is_complete',
+                'missing_aspects'
+            ]
+            output.append(','.join(header))
+
+        # Data row
+        row = [
+            validation.ticket_key,
+            validation.ticket_type,
+            f'"{validation.summary}"',  # Quote summary in case it has commas
+            validation.status,
+            validation.url,
+            validation.created_at,
+            validation.updated_at,
+            validation.validated_at,
+            str(validation.why.score),
+            str(validation.results.score),
+            str(validation.prove.score),
+            str(validation.design.score),
+            str(validation.evidence.score),
+            str(validation.why.score + validation.results.score + validation.prove.score +
+                validation.design.score + validation.evidence.score),
+            '15',
+            f'{validation.overall_score:.2f}',
+            str(validation.is_complete),
+            f'"{", ".join(validation.missing_aspects)}"' if validation.missing_aspects else '""'
+        ]
+        output.append(','.join(row))
+
+        return '\n'.join(output)
+
 
 def main():
     """Main entry point."""
@@ -740,12 +808,33 @@ def main():
         help='Jira ticket URL or ID (e.g., OSC-1234 or https://issues.redhat.com/browse/OSC-1234)'
     )
     parser.add_argument(
+        '--format',
+        '-f',
+        choices=['text', 'json', 'csv'],
+        default='text',
+        help='Output format: text (human-readable, default), json (complete data), csv (spreadsheet)'
+    )
+    parser.add_argument(
+        '--output',
+        '-o',
+        help='Output file path (default: stdout)'
+    )
+    parser.add_argument(
         '--json',
         action='store_true',
-        help='Output in JSON format'
+        help='Output in JSON format (deprecated, use --format json)'
+    )
+    parser.add_argument(
+        '--no-header',
+        action='store_true',
+        help='Omit header row in CSV format (useful for batch processing)'
     )
 
     args = parser.parse_args()
+
+    # Handle deprecated --json flag
+    if args.json:
+        args.format = 'json'
 
     # Get credentials from environment
     jira_url = os.environ.get('JIRA_URL')
@@ -771,14 +860,20 @@ def main():
         validator = JiraValidator(jira_url, jira_token, jira_email)
         validation = validator.validate_ticket(args.ticket)
 
-        if args.json:
+        # Format output based on requested format
+        if args.format == 'json':
             # Convert to dict for JSON serialization
-            output = {
+            output_data = {
                 'ticket_key': validation.ticket_key,
                 'ticket_type': validation.ticket_type,
                 'summary': validation.summary,
                 'status': validation.status,
                 'url': validation.url,
+                'timestamps': {
+                    'created_at_utc': validation.created_at,
+                    'updated_at_utc': validation.updated_at,
+                    'validated_at_utc': validation.validated_at
+                },
                 'scores': {
                     'why': validation.why.score,
                     'results': validation.results.score,
@@ -803,9 +898,21 @@ def main():
                 },
                 'recommendations': validation.recommendations
             }
-            print(json.dumps(output, indent=2))
+            output_text = json.dumps(output_data, indent=2)
+        elif args.format == 'csv':
+            output_text = validator.format_csv(validation, include_header=not args.no_header)
+        else:  # text format
+            output_text = validator.format_validation(validation)
+
+        # Write to file or stdout
+        if args.output:
+            with open(args.output, 'w') as f:
+                f.write(output_text)
+                if args.format != 'csv':  # CSV doesn't need trailing newline
+                    f.write('\n')
+            print(f"Output written to: {args.output}", file=sys.stderr)
         else:
-            print(validator.format_validation(validation))
+            print(output_text)
 
     except requests.exceptions.HTTPError as e:
         print(f"Error: HTTP {e.response.status_code} - {e.response.text}", file=sys.stderr)
