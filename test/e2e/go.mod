@@ -8,6 +8,7 @@ require (
 	github.com/openshift/origin v1.5.0-alpha.3.0.20260403210430-c77ff4a065bf
 	github.com/tidwall/gjson v1.18.0
 	k8s.io/apimachinery v0.35.1
+	k8s.io/kubernetes v1.35.1
 )
 
 require (
@@ -294,7 +295,6 @@ require (
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubectl v0.35.1 // indirect
 	k8s.io/kubelet v0.31.1 // indirect
-	k8s.io/kubernetes v1.35.1 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	k8s.io/pod-security-admission v0.35.1 // indirect
 	k8s.io/sample-apiserver v0.0.0 // indirect
